@@ -1,0 +1,69 @@
+# MetroMatch Requirements
+# Install: pip install -r requirements.txt
+
+# ============================================
+# CORE DEPENDENCIES (Required)
+# ============================================
+
+# Database
+pymongo>=4.0.0
+dnspython>=2.0.0  # Required for MongoDB Atlas connection strings
+
+# HTTP Requests & Web Scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0  # Faster HTML/XML parser for BeautifulSoup
+
+# Environment Management
+python-dotenv>=1.0.0
+
+# ============================================
+# AUDIO & METRONOME (Choose at least one)
+# ============================================
+
+# Metronome Sound Backends (install at least one for audio playback)
+pygame>=2.5.0  # Recommended - most compatible
+# simpleaudio>=1.0.4  # Alternative - lightweight
+# PyAudio>=0.2.13  # Alternative - more control
+
+# ============================================
+# OPTIONAL: LOCAL BPM DETECTION
+# ============================================
+# Uncomment if you want to detect BPM from local audio files
+
+# Audio Analysis
+# librosa>=0.10.0
+# soundfile>=0.12.0
+# numpy>=1.24.0
+# scipy>=1.10.0
+# audioread>=3.0.0
+
+# ============================================
+# OPTIONAL: NOW PLAYING DETECTION
+# ============================================
+# Platform-specific dependencies for detecting currently playing music
+
+# macOS only
+pyobjc-framework-Cocoa>=9.0  # For AppKit and ScriptingBridge
+pyobjc-framework-ScriptingBridge>=9.0
+# Note: Window title monitoring uses osascript (built-in), no additional packages needed
+
+# Windows only
+# winrt>=1.0.0  # For Windows.Media API
+
+# Linux only
+# dbus-python>=1.3.0  # For MPRIS support
+
+# ============================================
+# DEVELOPMENT & TESTING
+# ============================================
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+
+# Code Quality (optional - install via requirements-dev.txt)
+# black>=23.0.0
+# flake8>=6.0.0
+# mypy>=1.0.0

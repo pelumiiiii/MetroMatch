@@ -1,0 +1,1 @@
+"""Metronome player module."""

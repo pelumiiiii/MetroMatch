@@ -1,0 +1,1 @@
+"""Music detection module."""
