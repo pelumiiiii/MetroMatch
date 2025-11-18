@@ -8,6 +8,13 @@ load_dotenv()
 # API Configuration
 GETSONGBPM_API_KEY = os.getenv('GETSONGBPM_API_KEY', '')
 
+# Spotify API (for album covers)
+SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID', '')
+SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET', '')
+
+# Album Cover Settings
+ENABLE_ALBUM_COVERS = os.getenv('ENABLE_ALBUM_COVERS', 'true').lower() == 'true'
+
 # MongoDB Configuration
 MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017')
 MONGODB_DATABASE = os.getenv('MONGODB_DATABASE', 'metromatch')

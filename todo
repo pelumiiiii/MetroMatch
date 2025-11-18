@@ -1,8 +1,19 @@
-Goals of this project is to create a Music recognition software that provides enthusiasts with dynamic features to  improve the quality of their lifestyle. 
+Goals of this project is to create a Music recognition software that provides enthusiasts with dynamic features to improve the quality of their lifestyle.
 
 Feature List:
-Dynamic Metronome: provides a BPM, volume and Pitch(0-2000hz) sliders. Also another slider for setting a time signature. default is 4/4; ranging from 1/4 to 7/8.  Extra features(check boxes for activation) in developer mode would be a dynamic bpm option, a swing feature, and polyrhythm features.
+Dynamic Metronome: provides a BPM, volume and Pitch(0-2000hz) sliders. Also another slider for setting a time signature. default is 4/4; ranging from 1/4 to 7/8. Extra features(check boxes for activation) in developer mode would be a dynamic bpm option, a swing feature, and polyrhythm features.
 
 Creating a history menu on bpm based on cache data
 
 Understanding auto-sync; Fix now playing function
+
+in auto sync loop, try make it only check after the length of the track in minutes
+
+Figure out why with_now_playing.py doesnt have the tidal function tntegrated. might be a different process?
+
+prompt:
+can we construct the webpage structuring this project use cases.
+
+There the metronome(dynamic) and the MetroMatch - song bpm matcher. Each section of the project should be accesses through a minimal mamburger menu that dropsdown to access each feature.
+
+create a https://tunebat.com/BPM-Tempo-Tapper

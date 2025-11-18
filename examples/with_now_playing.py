@@ -2,11 +2,16 @@
 
 import sys
 from pathlib import Path
+import logging
+
+# Enable debug logging to see scraper activity
+logging.basicConfig(level=logging.DEBUG, format='%(name)s: %(message)s')
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.manager import BPMManager
+from config.settings import MONGODB_URI, GETSONGBPM_API_KEY
 import time
 
 
@@ -18,8 +23,8 @@ def main():
 
     # Initialize the BPM Manager
     manager = BPMManager(
-        mongodb_uri="mongodb://localhost:27017",
-        getsongbpm_api_key=None,  # Set to your API key
+        mongodb_uri=MONGODB_URI,
+        getsongbpm_api_key=GETSONGBPM_API_KEY,  # Uses key from .env
         use_scraper=True,
         auto_sync=False  # We'll manually control syncing in this example
     )

@@ -328,6 +328,10 @@ class NowPlayingDetector:
             song = parts[0].strip()
             artist = parts[1].strip()
 
+            # Extract only the first artist if multiple are listed
+            if ',' in artist:
+                artist = artist.split(',')[0].strip()
+
             if artist and song:
                 return {
                     "artist": artist,

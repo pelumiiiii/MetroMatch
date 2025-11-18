@@ -96,10 +96,64 @@ class SongBPMScraper:
 
             soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Find first search result
-            result_link = soup.select_one('.search-results a')
+            # Try multiple selectors for search results
+            selectors = [
+                '.search-results a',
+                'a[href*="/@"]',  # Links containing /@artist/
+                '.result a',
+                '.song-result a',
+                'article a',
+                'main a[href*="/@"]',
+            ]
+
+            # Find all potential song links
+            all_links = []
+            artist_slug = artist.lower().replace(' ', '-')
+            artist_slug = re.sub(r'[^a-z0-9-]', '', artist_slug)
+
+            for selector in selectors:
+                links = soup.select(selector)
+                for link in links:
+                    href = link.get('href', '')
+                    # Only match song links (/@artist/song format, not just /@artist)
+                    if isinstance(href, str) and href.startswith('/@') and href.count('/') >= 2:
+                        # Verify the link contains the artist name
+                        href_lower = href.lower()
+                        if artist_slug in href_lower or artist.lower().replace(' ', '') in href_lower:
+                            all_links.append(link)
+                        else:
+                            logger.debug(f"Skipping unrelated link: {href}")
+
+            # Filter and prioritize results - prefer non-instrumental versions
+            result_link = None
+
+            # First pass: find non-instrumental, non-remix version
+            for link in all_links:
+                href = link.get('href', '').lower()
+                # Skip instrumentals, remixes, covers
+                if '-instrumental' in href:
+                    continue
+                if '-remix' in href:
+                    continue
+                if '-cover' in href:
+                    continue
+                result_link = link
+                logger.debug(f"Found original version: {href}")
+                break
+
+            # Fallback: use first result if no clean match
+            if not result_link and all_links:
+                result_link = all_links[0]
+                logger.debug(f"Using first available result: {all_links[0].get('href')}")
+
             if result_link:
-                song_url = self.BASE_URL + str(result_link['href'])
+                href = result_link.get('href', '')
+                if href.startswith('/@'):
+                    song_url = self.BASE_URL + href
+                else:
+                    song_url = self.BASE_URL + href
+
+                logger.debug(f"Fetching song page: {song_url}")
                 response = self.session.get(song_url, timeout=10)
                 response.raise_for_status()
 
@@ -114,6 +168,8 @@ class SongBPMScraper:
                         "source": "songbpm_scraper",
                         "url": song_url
                     }
+            else:
+                logger.debug(f"No search results found for: {artist} - {title}")
 
             return None
 

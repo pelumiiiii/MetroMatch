@@ -3,49 +3,200 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BeatSync - BPM Metronome App</title>
+    <title>MetroMatch - Spotify Authorization</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 600px;
             margin: 50px auto;
             padding: 20px;
             line-height: 1.6;
+            background: #121212;
+            color: #fff;
         }
-        h1 { color: #2c3e50; }
-        .credits {
-            margin-top: 50px;
+        .container {
+            background: #282828;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+        }
+        h1 {
+            color: #1DB954;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #b3b3b3;
+            margin-bottom: 30px;
+        }
+        .status {
             padding: 20px;
-            background: #f4f4f4;
-            border-radius: 5px;
+            border-radius: 8px;
+            margin: 20px 0;
         }
-        a { color: #3498db; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        .success {
+            background: rgba(29, 185, 84, 0.1);
+            border: 1px solid #1DB954;
+        }
+        .error {
+            background: rgba(255, 85, 85, 0.1);
+            border: 1px solid #ff5555;
+        }
+        .waiting {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid #535353;
+        }
+        .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        .code-box {
+            background: #121212;
+            border: 1px solid #535353;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            word-break: break-all;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            color: #1DB954;
+            text-align: left;
+        }
+        .copy-btn {
+            background: #1DB954;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+            transition: all 0.2s;
+        }
+        .copy-btn:hover {
+            background: #1ed760;
+            transform: scale(1.05);
+        }
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
+        .info {
+            color: #b3b3b3;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+        .info code {
+            background: #121212;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #fff;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #535353;
+            color: #b3b3b3;
+            font-size: 12px;
+        }
+        .footer a {
+            color: #1DB954;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
-    <h1>🎵 BeatSync</h1>
-    <p>A smart metronome app that automatically detects and syncs to the BPM of any song playing on your device.</p>
-    
-    <h2>Features</h2>
-    <ul>
-        <li>Automatic BPM detection from playing songs</li>
-        <li>Real-time metronome synchronization</li>
-        <li>Comprehensive song database</li>
-        <li>Perfect for music practice and learning</li>
-    </ul>
-    
-    <h2>Status</h2>
-    <p>Currently in development. Coming soon to Android and iOS!</p>
-    
-    <div class="credits">
-        <h3>Credits & Attribution</h3>
-        <p>BPM and song data provided by <a href="https://getsongbpm.com" target="_blank">GetSongBPM.com</a></p>
-        <p>Thank you to GetSongBPM for providing free API access to their comprehensive music database.</p>
+    <div class="container">
+        <h1>MetroMatch</h1>
+        <p class="subtitle">Spotify Authorization Callback</p>
+
+        <div id="status-container">
+            <div class="status waiting">
+                <div class="icon">&#8987;</div>
+                <p>Checking authorization status...</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>BPM data provided by <a href="https://getsongbpm.com" target="_blank">GetSongBPM</a></p>
+            <p>&copy; 2024 MetroMatch</p>
+        </div>
     </div>
-    
-    <footer style="margin-top: 50px; text-align: center; color: #7f8c8d;">
-        <p>&copy; 2024 BeatSync. All rights reserved.</p>
-    </footer>
+
+    <script>
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                code: params.get('code'),
+                error: params.get('error'),
+                state: params.get('state')
+            };
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.getElementById('copy-btn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = 'Copy Code';
+                }, 2000);
+            });
+        }
+
+        function displayStatus() {
+            const container = document.getElementById('status-container');
+            const params = getUrlParams();
+
+            if (params.error) {
+                container.innerHTML = `
+                    <div class="status error">
+                        <div class="icon">&#10060;</div>
+                        <h3>Authorization Failed</h3>
+                        <p>Error: ${params.error}</p>
+                        <p class="info">Please try authorizing again from your application.</p>
+                    </div>
+                `;
+            } else if (params.code) {
+                container.innerHTML = `
+                    <div class="status success">
+                        <div class="icon">&#10004;</div>
+                        <h3>Authorization Successful!</h3>
+                        <p>Your authorization code:</p>
+                        <div class="code-box">${params.code}</div>
+                        <button id="copy-btn" class="copy-btn" onclick="copyToClipboard('${params.code}')">
+                            Copy Code
+                        </button>
+                        <p class="info">
+                            This code can be exchanged for access tokens.<br>
+                            You can close this window and return to MetroMatch.
+                        </p>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="status waiting">
+                        <div class="icon">&#128279;</div>
+                        <h3>Waiting for Authorization</h3>
+                        <p>This page handles Spotify OAuth callbacks for MetroMatch.</p>
+                        <p class="info">
+                            To authorize, start the OAuth flow from MetroMatch.<br><br>
+                            <strong>Setup:</strong><br>
+                            1. Go to <a href="https://developer.spotify.com/dashboard" target="_blank" style="color: #1DB954;">Spotify Developer Dashboard</a><br>
+                            2. Create an app or select existing one<br>
+                            3. Add this URL as a Redirect URI:<br>
+                            <code>https://pelumiiiii.github.io/MetroMatch/</code>
+                        </p>
+                    </div>
+                `;
+            }
+        }
+
+        // Run on page load
+        displayStatus();
+    </script>
 </body>
 </html>

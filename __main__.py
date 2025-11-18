@@ -115,7 +115,8 @@ Examples:
                 print("\n🔄 Syncing to now playing...")
                 if manager.sync_to_now_playing():
                     print(f"✅ Synced! BPM: {manager.current_bpm}")
-                    print(f"🎵 Track: {manager.current_track.get('artist')} - {manager.current_track.get('title')}")
+                    if manager.current_track:
+                        print(f"🎵 Track: {manager.current_track.get('artist')} - {manager.current_track.get('title')}")
 
                     # Start metronome
                     manager.start_metronome()
