@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 import logging
 
-# Enable debug logging to see scraper activity
-logging.basicConfig(level=logging.DEBUG, format='%(name)s: %(message)s')
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(name)s: %(message)s')
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

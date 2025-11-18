@@ -2,6 +2,7 @@
 
 from typing import Optional, Dict, Any
 import logging
+import re
 
 from .cache.mongodb_cache import MongoDBCache
 from .api.getsongbpm import GetSongBPMClient
@@ -10,6 +11,35 @@ from .detection.now_playing import NowPlayingDetector
 from .metronome.player import MetronomePlayer
 
 logger = logging.getLogger(__name__)
+
+
+def clean_title(title: str) -> str:
+    """
+    Clean song title by removing featured artists and other common suffixes.
+
+    Args:
+        title: Original song title
+
+    Returns:
+        Cleaned title
+    """
+    # Remove (feat. ...), [feat. ...], (ft. ...), etc.
+    patterns = [
+        r'\s*\(feat\.?\s+[^)]+\)',
+        r'\s*\[feat\.?\s+[^\]]+\]',
+        r'\s*\(ft\.?\s+[^)]+\)',
+        r'\s*\[ft\.?\s+[^\]]+\]',
+        r'\s*\(featuring\s+[^)]+\)',
+        r'\s*\(with\s+[^)]+\)',
+        r'\s*-\s*feat\.?\s+.+$',
+        r'\s*-\s*ft\.?\s+.+$',
+    ]
+
+    cleaned = title
+    for pattern in patterns:
+        cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+
+    return cleaned.strip()
 
 
 class BPMManager:
@@ -55,21 +85,36 @@ class BPMManager:
         Returns:
             BPM value or None if not found
         """
-        # Try cache first
-        if self.cache:
-            cached = self.cache.get(artist, title)
-            if cached:
-                logger.info(f"BPM found in cache: {cached['bpm']}")
-                return cached['bpm']
+        # Clean the title to remove featured artists etc.
+        cleaned_title = clean_title(title)
+        if cleaned_title != title:
+            logger.info(f"Cleaned title: '{title}' -> '{cleaned_title}'")
+            print(f"[BPM Lookup] Cleaned title: '{title}' -> '{cleaned_title}'")
 
-        # Try API
+        # Try cache first (with original title)
+        if self.cache:
+            try:
+                cached = self.cache.get(artist, title)
+                if cached:
+                    logger.info(f"BPM found in cache: {cached['bpm']}")
+                    return cached['bpm']
+                # Also try with cleaned title
+                if cleaned_title != title:
+                    cached = self.cache.get(artist, cleaned_title)
+                    if cached:
+                        logger.info(f"BPM found in cache (cleaned): {cached['bpm']}")
+                        return cached['bpm']
+            except Exception as e:
+                logger.warning(f"Cache lookup failed: {e}")
+
+        # Try API with cleaned title
         if self.api_client:
-            api_result = self.api_client.search(artist, title)
+            api_result = self.api_client.search(artist, cleaned_title)
             if api_result and api_result.get('bpm'):
                 bpm = api_result['bpm']
                 logger.info(f"BPM found via API: {bpm}")
 
-                # Cache the result
+                # Cache the result with original title
                 if self.cache:
                     self.cache.set(artist, title, bpm, api_result)
 
@@ -77,18 +122,26 @@ class BPMManager:
 
         # Try scraper as fallback
         if self.scraper:
+            print(f"[BPM Lookup] Trying scraper for: {artist} - {title}")
             scrape_result = self.scraper.search(artist, title)
             if scrape_result and scrape_result.get('bpm'):
                 bpm = scrape_result['bpm']
                 logger.info(f"BPM found via scraper: {bpm}")
+                print(f"[BPM Lookup] Found BPM: {bpm}")
 
-                # Cache the result
+                # Cache the result with original title
                 if self.cache:
-                    self.cache.set(artist, title, bpm, scrape_result)
+                    try:
+                        self.cache.set(artist, title, bpm, scrape_result)
+                    except Exception as e:
+                        logger.warning(f"Cache store failed: {e}")
 
                 return bpm
+            else:
+                print(f"[BPM Lookup] Scraper returned no results")
 
         logger.warning(f"Could not find BPM for {artist} - {title}")
+        print(f"[BPM Lookup] Could not find BPM for {artist} - {title}")
         return None
 
     def sync_to_now_playing(self) -> bool:

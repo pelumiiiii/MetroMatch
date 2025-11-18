@@ -13,6 +13,7 @@ dnspython>=2.0.0  # Required for MongoDB Atlas connection strings
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0  # Faster HTML/XML parser for BeautifulSoup
+playwright>=1.40.0  # Browser automation for UI search fallback
 
 # Environment Management
 python-dotenv>=1.0.0
@@ -23,6 +24,7 @@ python-dotenv>=1.0.0
 
 # Metronome Sound Backends (install at least one for audio playback)
 pygame>=2.5.0  # Recommended - most compatible
+numpy>=1.24.0  # Required for audio generation in GUI
 # simpleaudio>=1.0.4  # Alternative - lightweight
 # PyAudio>=0.2.13  # Alternative - more control
 

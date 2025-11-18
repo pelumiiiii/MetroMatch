@@ -19,7 +19,12 @@ class MongoDBCache:
             connection_string: MongoDB connection string
             database_name: Name of the database to use
         """
-        self.client = MongoClient(connection_string)
+        # Set a short timeout to avoid blocking if MongoDB isn't running
+        self.client = MongoClient(
+            connection_string,
+            serverSelectionTimeoutMS=2000,  # 2 second timeout
+            connectTimeoutMS=2000
+        )
         self.db = self.client[database_name]
         self.collection = self.db.bpm_cache
         self._create_indexes()

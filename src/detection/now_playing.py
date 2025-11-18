@@ -94,9 +94,7 @@ class NowPlayingDetector:
                 # ("Tidal", "com.tidal.desktop"),  # Disabled - no AppleScript support
             ]
 
-            # Track if we found any running AppleScript-capable player
-            found_running_player = False
-
+            # First try AppleScript-capable players
             for player_name, bundle_id in players:
                 try:
                     player = SBApplication.applicationWithBundleIdentifier_(bundle_id)
@@ -104,9 +102,6 @@ class NowPlayingDetector:
                     # Check if player is running
                     if not player or not player.isRunning():
                         continue
-
-                    # Mark that we found a running player
-                    found_running_player = True
 
                     # Get current track
                     track = player.currentTrack()
@@ -132,16 +127,15 @@ class NowPlayingDetector:
                     logger.debug(f"Could not get track from {player_name}: {e}")
                     continue
 
-            # Only check Tidal/window monitoring if NO AppleScript player was found running
-            # This prevents unnecessarily activating Tidal when Music/Spotify is playing
-            if not found_running_player:
-                logger.debug("No AppleScript-capable players running, checking window title monitoring")
-                try:
-                    track_info = self._get_macos_now_playing_center()
-                    if track_info:
-                        return track_info
-                except Exception as e:
-                    logger.debug(f"Could not get track from Now Playing Center: {e}")
+            # If no track found from AppleScript players, try window title monitoring
+            # This catches TIDAL and other apps without AppleScript support
+            logger.debug("No track from AppleScript players, checking window title monitoring")
+            try:
+                track_info = self._get_macos_now_playing_center()
+                if track_info:
+                    return track_info
+            except Exception as e:
+                logger.debug(f"Could not get track from Now Playing Center: {e}")
 
             return None
 
