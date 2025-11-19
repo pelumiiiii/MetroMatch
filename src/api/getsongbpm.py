@@ -29,12 +29,21 @@ class GetSongBPMClient:
         self.api_key = api_key
         self.session = requests.Session()
         # Use realistic browser headers to avoid Cloudflare blocking
+        # Note: Don't request brotli (br) encoding - requests doesn't decompress it automatically
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
+            "Referer": "https://getsongbpm.com/",
+            "Origin": "https://getsongbpm.com",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site",
+            "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
         })
 
     def search(self, artist: str, title: str) -> Optional[Dict[str, Any]]:
@@ -51,12 +60,50 @@ class GetSongBPMClient:
             lookup = f"song:{title.lower()} artist:{artist.lower()}"
             params = {"api_key": self.api_key, "type": "both", "lookup": lookup}
             response = self.session.get(f"{self.BASE_URL}/search/", params=params, timeout=10)
+
+            # Log response details for debugging
+            logger.debug(f"Search response status: {response.status_code}")
+            logger.debug(f"Search response headers: {dict(response.headers)}")
+            print(f"[GetSongBPM] Response status: {response.status_code}, length: {len(response.text)}")
+
             response.raise_for_status()
 
-            data = response.json()
+            # Check for empty response
+            if not response.text:
+                logger.warning(f"Empty response from API for: {artist} - {title}")
+                print(f"[GetSongBPM] Empty response for: {artist} - {title}")
+                return None
+
+            try:
+                data = response.json()
+            except ValueError as e:
+                logger.error(f"Invalid JSON response: {response.text[:200]}")
+                print(f"[GetSongBPM] Invalid JSON: {response.text[:100]}")
+                return None
+
+            # Debug: print the actual response
+            print(f"[GetSongBPM] Response data: {data}")
+
             search_results = data.get("search")
 
-            if not search_results or len(search_results) == 0:
+            # Handle different response formats:
+            # Success: {'search': [{'id': '...', ...}]} - list of results
+            # No results: {'search': {'error': 'no result'}} - dict with error
+            if not search_results:
+                logger.warning(f"No results for: {artist} - {title}")
+                return None
+
+            # Check if it's an error response (dict instead of list)
+            if isinstance(search_results, dict):
+                if "error" in search_results:
+                    logger.warning(f"API returned error for {artist} - {title}: {search_results.get('error')}")
+                    print(f"[GetSongBPM] No results found")
+                    return None
+                else:
+                    logger.warning(f"Unexpected search format: {search_results}")
+                    return None
+
+            if not isinstance(search_results, list) or len(search_results) == 0:
                 logger.warning(f"No results for: {artist} - {title}")
                 return None
 

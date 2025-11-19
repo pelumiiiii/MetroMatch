@@ -5,6 +5,7 @@ from tkinter import ttk
 import threading
 import time
 import math
+import io
 from typing import Optional
 import pygame
 import numpy as np
@@ -16,7 +17,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.manager import BPMManager
 from src.detection.now_playing import NowPlayingDetector
-from config.settings import MONGODB_URI, GETSONGBPM_API_KEY
+from src.media.album_cover import AlbumCoverManager
+from config.settings import (
+    MONGODB_URI, GETSONGBPM_API_KEY,
+    SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, ENABLE_ALBUM_COVERS
+)
+
+# Import PIL for image handling
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 
 class MetroMatchApp:
@@ -47,6 +59,40 @@ class MetroMatchApp:
 
         self.root.configure(bg=self.colors['bg'])
 
+        # Configure ttk styles for buttons (works on macOS)
+        self.style = ttk.Style()
+        self.style.theme_use('clam')  # Use clam theme for better color support
+
+        # Green button style
+        self.style.configure(
+            'Green.TButton',
+            background=self.colors['accent'],
+            foreground=self.colors['text'],
+            font=('Helvetica', 11),
+            padding=(20, 10),
+            borderwidth=0
+        )
+        self.style.map(
+            'Green.TButton',
+            background=[('active', '#1ed760'), ('pressed', '#1ed760')],
+            foreground=[('active', self.colors['text']), ('pressed', self.colors['text'])]
+        )
+
+        # Large green button style
+        self.style.configure(
+            'GreenLarge.TButton',
+            background=self.colors['accent'],
+            foreground=self.colors['text'],
+            font=('Helvetica', 12, 'bold'),
+            padding=(30, 12),
+            borderwidth=0
+        )
+        self.style.map(
+            'GreenLarge.TButton',
+            background=[('active', '#1ed760'), ('pressed', '#1ed760')],
+            foreground=[('active', self.colors['text']), ('pressed', self.colors['text'])]
+        )
+
         # Initialize pygame mixer for audio
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=256)
 
@@ -57,6 +103,13 @@ class MetroMatchApp:
         # Initialize managers (lazy load)
         self.bpm_manager = None
         self.now_playing_detector = None
+        self.album_cover_manager = None
+
+        # Album cover state
+        self.current_album_image = None  # Keep reference to prevent garbage collection
+
+        # Tab state
+        self.current_tab = tk.StringVar(value='info')
 
         # Metronome state
         self.is_playing = False
@@ -114,18 +167,25 @@ class MetroMatchApp:
 
     def _build_navigation(self):
         """Build the floating hamburger menu."""
+        # Configure hamburger button style
+        self.style.configure(
+            'Menu.TButton',
+            background=self.colors['accent'],
+            foreground=self.colors['text'],
+            font=('Helvetica', 18),
+            padding=(10, 6),
+            borderwidth=0
+        )
+        self.style.map(
+            'Menu.TButton',
+            background=[('active', '#1ed760'), ('pressed', '#1ed760')]
+        )
+
         # Floating hamburger menu button (positioned above slider)
-        self.menu_button = tk.Button(
+        self.menu_button = ttk.Button(
             self.root,
             text="☰",
-            font=('Helvetica', 18),
-            bg=self.colors['bg_secondary'],
-            fg=self.colors['text'],
-            activebackground=self.colors['bg_tertiary'],
-            activeforeground=self.colors['accent'],
-            bd=0,
-            padx=10,
-            pady=6,
+            style='Menu.TButton',
             cursor='hand2',
             command=self._toggle_menu
         )
@@ -137,7 +197,22 @@ class MetroMatchApp:
         self.view_label = tk.Label(self.root, text="", bg=self.colors['bg'])
 
         # Dropdown menu (hidden by default, floating)
-        self.dropdown = tk.Frame(self.root, bg=self.colors['bg_secondary'], bd=0)
+        self.dropdown = tk.Frame(self.root, bg=self.colors['accent'], bd=0)
+
+        # Configure menu item style
+        self.style.configure(
+            'MenuItem.TButton',
+            background=self.colors['accent'],
+            foreground=self.colors['text'],
+            font=('Helvetica', 13),
+            padding=(20, 15),
+            borderwidth=0,
+            anchor='w'
+        )
+        self.style.map(
+            'MenuItem.TButton',
+            background=[('active', '#1ed760'), ('pressed', '#1ed760')]
+        )
 
         # Menu items (no header)
         menu_items = [
@@ -146,26 +221,15 @@ class MetroMatchApp:
         ]
 
         for text, command in menu_items:
-            item = tk.Button(
+            item = ttk.Button(
                 self.dropdown,
                 text=text,
-                font=('Helvetica', 13),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text'],
-                activebackground=self.colors['accent'],
-                activeforeground=self.colors['text'],
-                bd=0,
-                pady=15,
-                padx=20,
-                anchor='w',
+                style='MenuItem.TButton',
                 cursor='hand2',
                 command=lambda cmd=command: self._select_menu_item(cmd)
             )
             item.pack(fill=tk.X)
 
-            # Hover effect
-            item.bind('<Enter>', lambda e, w=item: w.configure(bg=self.colors['bg_tertiary']))
-            item.bind('<Leave>', lambda e, w=item: w.configure(bg=self.colors['bg_secondary']))
 
     def _build_content_area(self):
         """Build the main content area."""
@@ -295,35 +359,28 @@ class MetroMatchApp:
         play_frame = tk.Frame(container, bg=self.colors['bg'])
         play_frame.pack(pady=5)
 
-        self.play_button = tk.Button(
+        # Configure play/pause button style (larger, more prominent)
+        self.style.configure(
+            'Play.TButton',
+            background=self.colors['accent'],
+            foreground=self.colors['text'],
+            font=('Helvetica', 36),
+            padding=(30, 12),
+            borderwidth=0
+        )
+        self.style.map(
+            'Play.TButton',
+            background=[('active', '#1ed760'), ('pressed', '#1ed760')]
+        )
+
+        self.play_button = ttk.Button(
             play_frame,
             text="▷",
-            font=('Helvetica', 28),
-            bg=self.colors['bg'],
-            fg=self.colors['accent'],
-            activebackground=self.colors['bg'],
-            activeforeground='#1ed760',
-            bd=0,
-            padx=15,
+            style='Play.TButton',
             cursor='hand2',
             command=self._toggle_metronome
         )
-        self.play_button.pack(side=tk.LEFT)
-
-        self.stop_button = tk.Button(
-            play_frame,
-            text="▢",
-            font=('Helvetica', 24),
-            bg=self.colors['bg'],
-            fg=self.colors['text_secondary'],
-            activebackground=self.colors['bg'],
-            activeforeground=self.colors['text'],
-            bd=0,
-            padx=15,
-            cursor='hand2',
-            command=self._stop_metronome
-        )
-        self.stop_button.pack(side=tk.LEFT)
+        self.play_button.pack()
 
         # Beat indicator dots
         self.beat_canvas = tk.Canvas(
@@ -444,7 +501,7 @@ class MetroMatchApp:
     def _stop_metronome(self):
         """Stop the metronome."""
         self.is_playing = False
-        self.play_button.config(text="▷", fg=self.colors['accent'])
+        self.play_button.config(text="▷")
         self._draw_beat_indicators(0)
 
     def _create_slider(self, parent, label, variable, from_, to):
@@ -529,12 +586,12 @@ class MetroMatchApp:
         """Start or stop the metronome."""
         if self.is_playing:
             self.is_playing = False
-            self.play_button.config(text="▷", fg=self.colors['accent'])
+            self.play_button.configure(text="▷")
             self._draw_beat_indicators(0)
         else:
             self.is_playing = True
             self.current_beat = 0
-            self.play_button.config(text="⏸", fg=self.colors['accent'])
+            self.play_button.configure(text="⏸")
             self.metronome_thread = threading.Thread(target=self._metronome_loop, daemon=True)
             self.metronome_thread.start()
 
@@ -635,134 +692,84 @@ class MetroMatchApp:
         self.album_canvas.pack(fill=tk.BOTH, expand=True)
         self._draw_album_placeholder()
 
-        # Right side - Song info and tabs
+        # Right side - Song info
         right_section = tk.Frame(top_section, bg=self.colors['bg'])
         right_section.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Artist name
+        # Artist name (bold at top)
         self.artist_label = tk.Label(
             right_section,
             text="No song playing",
-            font=('Helvetica', 18, 'bold'),
+            font=('Helvetica', 24, 'bold'),
             bg=self.colors['bg'],
             fg=self.colors['text'],
             anchor='w'
         )
-        self.artist_label.pack(fill=tk.X, pady=(0, 5))
+        self.artist_label.pack(fill=tk.X, pady=(0, 8))
 
         # Song title
         self.song_title_label = tk.Label(
             right_section,
             text="Play music to detect",
-            font=('Helvetica', 11),
+            font=('Helvetica', 14),
             bg=self.colors['bg'],
             fg=self.colors['text_secondary'],
             anchor='w'
         )
-        self.song_title_label.pack(fill=tk.X, pady=(0, 15))
+        self.song_title_label.pack(fill=tk.X, pady=(0, 30))
 
-        # Tab buttons: Info | Lyrics | Beats
-        tab_frame = tk.Frame(right_section, bg=self.colors['bg'])
-        tab_frame.pack(fill=tk.X, pady=8)
-
-        self.current_tab = tk.StringVar(value='beats')
-
-        tabs = [('Info', 'info'), ('Lyrics', 'lyrics'), ('Beats', 'beats')]
-        for text, value in tabs:
-            btn = tk.Button(
-                tab_frame,
-                text=text,
-                font=('Helvetica', 10),
-                bg=self.colors['bg_secondary'] if value != 'beats' else self.colors['accent'],
-                fg=self.colors['text'],
-                activebackground=self.colors['accent'],
-                activeforeground=self.colors['text'],
-                bd=1,
-                relief='solid',
-                padx=12,
-                pady=6,
-                cursor='hand2',
-                command=lambda v=value: self._select_tab(v)
-            )
-            btn.pack(side=tk.LEFT, padx=(0, 5))
-            if value == 'beats':
-                self.beats_tab_btn = btn
-            elif value == 'info':
-                self.info_tab_btn = btn
-            elif value == 'lyrics':
-                self.lyrics_tab_btn = btn
-
-        # Tab content area
-        self.tab_content = tk.Frame(right_section, bg=self.colors['bg'])
-        self.tab_content.pack(fill=tk.BOTH, expand=True, pady=10)
-
-        # Show default tab (beats)
-        self._show_beats_tab()
-
-        # Bottom section - Media controls and progress
-        bottom_section = tk.Frame(container, bg=self.colors['bg'])
-        bottom_section.pack(fill=tk.X, side=tk.BOTTOM, padx=30, pady=15)
-
-        # Progress bar
-        self.progress_canvas = tk.Canvas(
-            bottom_section,
-            height=4,
-            bg=self.colors['border'],
-            highlightthickness=0
-        )
-        self.progress_canvas.pack(fill=tk.X, pady=(0, 10))
-        self._draw_progress(0)
-
-        # Media controls
-        controls_frame = tk.Frame(bottom_section, bg=self.colors['bg'])
-        controls_frame.pack()
-
-        # Previous button
-        prev_btn = tk.Button(
-            controls_frame,
-            text="⏮",
-            font=('Helvetica', 18),
+        # BPM Display
+        self.bpm_display = tk.Label(
+            right_section,
+            text="---",
+            font=('Helvetica', 48, 'bold'),
             bg=self.colors['bg'],
-            fg=self.colors['text_secondary'],
-            activebackground=self.colors['bg'],
-            activeforeground=self.colors['text'],
-            bd=0,
-            padx=12,
-            cursor='hand2'
+            fg=self.colors['accent']
         )
-        prev_btn.pack(side=tk.LEFT)
+        self.bpm_display.pack(pady=(0, 5))
 
-        # Detect/Play button (main action)
-        self.detect_button = tk.Button(
-            controls_frame,
-            text="●",
-            font=('Helvetica', 24),
-            bg=self.colors['accent'],
-            fg=self.colors['text'],
-            activebackground='#1ed760',
-            activeforeground=self.colors['text'],
-            bd=0,
-            padx=18,
-            pady=5,
+        tk.Label(
+            right_section,
+            text="BPM",
+            font=('Helvetica', 12),
+            bg=self.colors['bg'],
+            fg=self.colors['text_secondary']
+        ).pack()
+
+        # Source label
+        self.bpm_source_label = tk.Label(
+            right_section,
+            text="",
+            font=('Helvetica', 10),
+            bg=self.colors['bg'],
+            fg=self.colors['text_secondary']
+        )
+        self.bpm_source_label.pack(pady=(5, 15))
+
+        # Sync button
+        self.sync_button = ttk.Button(
+            right_section,
+            text="Sync to Metronome",
+            style='Green.TButton',
+            cursor='hand2',
+            command=self._sync_to_metronome,
+            state=tk.DISABLED
+        )
+        self.sync_button.pack()
+
+        # Bottom section - Detect button and status
+        bottom_section = tk.Frame(container, bg=self.colors['bg'])
+        bottom_section.pack(fill=tk.X, side=tk.BOTTOM, padx=30, pady=20)
+
+        # Detect button (centered)
+        self.detect_button = ttk.Button(
+            bottom_section,
+            text="Detect Now Playing",
+            style='GreenLarge.TButton',
             cursor='hand2',
             command=self._detect_now_playing
         )
-        self.detect_button.pack(side=tk.LEFT, padx=10)
-
-        # Next button
-        next_btn = tk.Button(
-            controls_frame,
-            text="⏭",
-            font=('Helvetica', 18),
-            bg=self.colors['bg'],
-            fg=self.colors['text_secondary'],
-            activebackground=self.colors['bg'],
-            activeforeground=self.colors['text'],
-            bd=0,
-            padx=12,
-            cursor='hand2'
-        )
-        next_btn.pack(side=tk.LEFT)
+        self.detect_button.pack(pady=(0, 10))
 
         # Status label
         self.status_label = tk.Label(
@@ -772,7 +779,7 @@ class MetroMatchApp:
             bg=self.colors['bg'],
             fg=self.colors['text_secondary']
         )
-        self.status_label.pack(pady=(8, 0))
+        self.status_label.pack()
 
         # Store detected BPM
         self.detected_bpm = None
@@ -805,133 +812,6 @@ class MetroMatchApp:
             fill=self.colors['bg'],
             outline=''
         )
-
-    def _draw_progress(self, progress):
-        """Draw progress bar.
-
-        Args:
-            progress: Progress value 0-1
-        """
-        self.progress_canvas.delete('all')
-        width = self.progress_canvas.winfo_width() or 400
-
-        # Draw progress
-        if progress > 0:
-            self.progress_canvas.create_rectangle(
-                0, 0, width * progress, 4,
-                fill=self.colors['accent'],
-                outline=''
-            )
-
-        # Draw handle
-        handle_x = width * progress
-        self.progress_canvas.create_oval(
-            handle_x - 6, -3, handle_x + 6, 7,
-            fill=self.colors['accent'],
-            outline=''
-        )
-
-    def _select_tab(self, tab_name):
-        """Select a tab.
-
-        Args:
-            tab_name: Name of tab to select
-        """
-        self.current_tab.set(tab_name)
-
-        # Update button styles
-        for btn, name in [(self.info_tab_btn, 'info'), (self.lyrics_tab_btn, 'lyrics'), (self.beats_tab_btn, 'beats')]:
-            if name == tab_name:
-                btn.config(bg=self.colors['accent'])
-            else:
-                btn.config(bg=self.colors['bg_secondary'])
-
-        # Show tab content
-        for widget in self.tab_content.winfo_children():
-            widget.destroy()
-
-        if tab_name == 'beats':
-            self._show_beats_tab()
-        elif tab_name == 'info':
-            self._show_info_tab()
-        elif tab_name == 'lyrics':
-            self._show_lyrics_tab()
-
-    def _show_beats_tab(self):
-        """Show the beats/BPM tab content."""
-        # BPM Display (scaled for smaller window)
-        self.bpm_display = tk.Label(
-            self.tab_content,
-            text="---",
-            font=('Helvetica', 36, 'bold'),
-            bg=self.colors['bg'],
-            fg=self.colors['accent']
-        )
-        self.bpm_display.pack(pady=10)
-
-        tk.Label(
-            self.tab_content,
-            text="BPM",
-            font=('Helvetica', 11),
-            bg=self.colors['bg'],
-            fg=self.colors['text_secondary']
-        ).pack()
-
-        self.bpm_source_label = tk.Label(
-            self.tab_content,
-            text="",
-            font=('Helvetica', 9),
-            bg=self.colors['bg'],
-            fg=self.colors['text_secondary']
-        )
-        self.bpm_source_label.pack(pady=(5, 10))
-
-        # Sync button
-        self.sync_button = tk.Button(
-            self.tab_content,
-            text="Sync to Metronome",
-            font=('Helvetica', 10),
-            bg=self.colors['bg_secondary'],
-            fg=self.colors['text'],
-            activebackground=self.colors['accent'],
-            activeforeground=self.colors['text'],
-            bd=0,
-            padx=15,
-            pady=8,
-            cursor='hand2',
-            command=self._sync_to_metronome,
-            state=tk.DISABLED
-        )
-        self.sync_button.pack()
-
-    def _show_info_tab(self):
-        """Show the info tab content."""
-        self.player_label = tk.Label(
-            self.tab_content,
-            text="Player: --",
-            font=('Helvetica', 10),
-            bg=self.colors['bg'],
-            fg=self.colors['text_secondary']
-        )
-        self.player_label.pack(anchor='w', pady=5)
-
-        tk.Label(
-            self.tab_content,
-            text="Source: Spotify, Apple Music, TIDAL",
-            font=('Helvetica', 10),
-            bg=self.colors['bg'],
-            fg=self.colors['text_secondary']
-        ).pack(anchor='w', pady=5)
-
-    def _show_lyrics_tab(self):
-        """Show the lyrics tab content."""
-        tk.Label(
-            self.tab_content,
-            text="Lyrics not available",
-            font=('Helvetica', 10),
-            bg=self.colors['bg'],
-            fg=self.colors['text_secondary']
-        ).pack(pady=15)
 
     def _detect_now_playing(self):
         """Detect the currently playing song and find its BPM."""
@@ -1025,6 +905,10 @@ class MetroMatchApp:
                     self._safe_widget_update('status_label', lambda w: w.config(
                         text="BPM not found in database", fg='#ff6b6b'
                     ))
+
+                # Fetch album artwork after BPM lookup completes
+                if ENABLE_ALBUM_COVERS and PIL_AVAILABLE:
+                    self._fetch_album_artwork(artist, title)
             else:
                 self._safe_widget_update('artist_label', lambda w: w.config(text="No song playing"))
                 self._safe_widget_update('song_title_label', lambda w: w.config(text="Play music to detect"))
@@ -1040,6 +924,62 @@ class MetroMatchApp:
             ))
         finally:
             self._safe_widget_update('detect_button', lambda w: w.config(state=tk.NORMAL))
+
+    def _fetch_album_artwork(self, artist: str, title: str):
+        """Fetch and display album artwork for a song.
+
+        Args:
+            artist: Artist name
+            title: Song title
+        """
+        if not PIL_AVAILABLE or not hasattr(self, '__class__'):
+            return
+            
+        try:
+            from PIL import Image, ImageTk
+            # Initialize album cover manager if needed
+            if not self.album_cover_manager:
+                self.album_cover_manager = AlbumCoverManager(
+                    mongodb_uri=MONGODB_URI,
+                    spotify_client_id=SPOTIFY_CLIENT_ID,
+                    spotify_client_secret=SPOTIFY_CLIENT_SECRET
+                )
+
+            # Get album cover
+            result = self.album_cover_manager.get_album_cover(artist, title)
+
+            if result and result.get('image_data'):
+                # Convert image data to PhotoImage
+                image_data = result['image_data']
+                image = Image.open(io.BytesIO(image_data))
+
+                # Resize to fit canvas (200x200)
+                image = image.resize((200, 200), Image.Resampling.LANCZOS)
+
+                # Convert to PhotoImage (must keep reference)
+                photo = ImageTk.PhotoImage(image)
+
+                # Update canvas on main thread
+                def update_canvas():
+                    if hasattr(self, 'album_canvas'):
+                        try:
+                            self.album_canvas.delete('all')
+                            self.album_canvas.create_image(100, 100, image=photo)
+                            # Keep reference to prevent garbage collection
+                            self.current_album_image = photo
+                        except Exception:
+                            pass  # Canvas might be destroyed
+
+                self.root.after(0, update_canvas)
+                print(f"[Album Art] Loaded artwork for: {artist} - {title}")
+            else:
+                # Reset to placeholder if no artwork found
+                self.root.after(0, self._draw_album_placeholder)
+                print(f"[Album Art] No artwork found for: {artist} - {title}")
+
+        except Exception as e:
+            print(f"[Album Art] Error fetching artwork: {e}")
+            self.root.after(0, self._draw_album_placeholder)
 
     def _sync_to_metronome(self):
         """Sync detected BPM to the metronome and switch views."""

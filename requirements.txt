@@ -28,6 +28,9 @@ numpy>=1.24.0  # Required for audio generation in GUI
 # simpleaudio>=1.0.4  # Alternative - lightweight
 # PyAudio>=0.2.13  # Alternative - more control
 
+# Image Processing (for album artwork)
+Pillow>=10.0.0
+
 # ============================================
 # OPTIONAL: LOCAL BPM DETECTION
 # ============================================
